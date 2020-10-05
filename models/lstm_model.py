@@ -41,7 +41,7 @@ class LSTMModel(nn.Module):
         self.lstm_cell = LSTMCell()
         self.dens_post = nn.Conv1d(cfg.num_units, cfg.num_bits_per_vector, 1)
 
-    def forward(self, input):
+    def forward(self, input, mask=None):
         x = self.dens_prep(input)
 
         seq, h = [None] * x.size(LENGTH_DIM), None

@@ -40,7 +40,7 @@ class TrainLoop:
 
                 self.model.zero_grad()
 
-                Y = self.model(X)
+                Y = self.model(X, mask=M)
 
                 loss = self.loss_func(T, Y, M)
                 loss.backward()
@@ -48,7 +48,6 @@ class TrainLoop:
                 rloss += loss.item() * X.size(0)
 
             pbar.desc = poem(rloss / len(self.data.dataset))
-
 
     def evaluate(self):
         self.data.dataset.curriculum = "none"

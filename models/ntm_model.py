@@ -136,12 +136,16 @@ class NTMModel(nn.Module):
         self.ntm_cell = NTMCell()
         self.line_post = nn.Linear(cfg.num_units, cfg.output_size)
 
-    def forward(self, input, return_sequence=False):
+    def forward(self, input, mask=None, return_sequence=False):
         seq, h = [None] * input.size(LENGTH_DIM), [None] * (input.size(LENGTH_DIM) + 1)
         for ii in range(input.size(LENGTH_DIM)):
-            x = self.line_prep(input[:, :, ii])
-            x, h[ii + 1] = self.ntm_cell(x, h[ii])
-            seq[ii] = torch.sigmoid(self.line_post(x))
+            if mask is None or torch.sum(mask[:, ii:]) > 0:
+                x = self.line_prep(input[:, :, ii])
+                x, h[ii + 1] = self.ntm_cell(x, h[ii])
+                seq[ii] = torch.sigmoid(self.line_post(x))
+            else:
+                seq[ii] = torch.zeros_like(seq[ii - 1])
+                h[ii] = h[ii - 1]
         x = torch.stack(seq, dim=LENGTH_DIM)
 
         if return_sequence:
