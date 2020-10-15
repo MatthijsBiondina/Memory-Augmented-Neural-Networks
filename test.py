@@ -6,4 +6,4 @@ while True:
     bs = random.randint(8, 512)
     ms = 32
 
-    subprocess.run(["python", "main.py", str(lr), str(bs), str(ms)], shell=True, check=True)
+    subprocess.run(["python main.py", str(lr), str(bs), str(ms)], shell=True, check=True)
