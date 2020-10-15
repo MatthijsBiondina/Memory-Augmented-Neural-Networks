@@ -38,7 +38,7 @@ elif cfg.mann == 'dnc':
 elif cfg.mann == 'transformer':
     model = TransformerModel().to(device)
 
-print(cfg.batch_size)
+# print(cfg.batch_size)
 
 train_loop = TrainLoop(dataset, model)
 train_loop.summary()
