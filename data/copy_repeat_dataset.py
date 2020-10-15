@@ -1,4 +1,4 @@
-from random import randint
+from random import randint, random
 import torch
 
 import utils.config as cfg
@@ -15,13 +15,21 @@ class CopyRepeatDataset:
         return 250
 
     def __getitem__(self, idx):
-        seq_len = self.max_seq_len
-        repeats = self.max_repeats
-        if self.curriculum == 'uniform':
+        seq_len, repeats = self.max_seq_len, self.max_repeats
+        if self.curriculum == "uniform":
             seq_len = randint(1, self.max_seq_len)
             repeats = randint(1, self.max_repeats)
-        elif self.curriculum == 'naive':
-            seq_len = self.curriculum_point
+        elif self.curriculum == 'none':
+            seq_len = self.max_seq_len
+            repeats = self.max_repeats
+        elif self.curriculum in ("naive", "prediction_gain_bandit", "prediction_gain_teacher"):
+            seq_len, repeats = max(1, self.curriculum_point)
+        elif self.curriculum == 'look_back':
+            seq_len = self.curriculum_point if random() < 0.9 else randint(1, self.curriculum_point)
+            repeats = self.curriculum_point if random() < 0.9 else randint(1, self.curriculum_point)
+        elif self.curriculum == 'look_back_and_forward':
+            seq_len = self.curriculum_point if random() < 0.8 else randint(1, self.max_seq_len)
+            repeats = self.curriculum_point if random() < 0.8 else randint(1, self.max_seq_len)
 
         # TODO: only show sequence once
         x_sos = torch.FloatTensor([0] * cfg.num_bits_per_vector + [1, 0]).unsqueeze(1)

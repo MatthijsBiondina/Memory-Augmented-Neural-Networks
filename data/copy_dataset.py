@@ -1,4 +1,4 @@
-from random import randint
+from random import randint, random
 
 import torch
 import utils.config as cfg
@@ -16,14 +16,23 @@ class CopyDataset(Dataset):
         self.curriculum_point = seq_len
 
     def __len__(self):
-        return 250
+        return cfg.batch_size
 
     def __getitem__(self, idx):
         seq_len = self.max_seq_len
         if self.curriculum == "uniform":
             seq_len = randint(1, self.max_seq_len)
-        elif self.curriculum == "naive":
-            seq_len = self.curriculum_point
+        elif self.curriculum == 'none':
+            seq_len = self.max_seq_len
+        elif self.curriculum in ("prediction_gain",):
+            seq_len = randint(1, self.curriculum_point)
+        elif self.curriculum in ("naive",):
+            seq_len = max(1, self.curriculum_point)
+        elif self.curriculum == 'look_back':
+            seq_len = self.curriculum_point if random() < 0.9 else randint(1,  self.curriculum_point)
+        elif self.curriculum == 'look_back_and_forward':
+            seq_len = self.curriculum_point if random() < 0.8 else randint(1,  self.max_seq_len)
+
         x_sos = torch.FloatTensor([0] * cfg.num_bits_per_vector + [1, 0]).unsqueeze(1)
         x_seq = torch.cat(
             ((torch.rand((cfg.num_bits_per_vector, seq_len)) > 0.5).float(),

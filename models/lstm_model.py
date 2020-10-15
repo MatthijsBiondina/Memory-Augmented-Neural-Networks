@@ -10,7 +10,7 @@ BATCH_DIM, CHANNEL_DIM, LENGTH_DIM = 0, 1, 2
 class LSTMCell(nn.Module):
     def __init__(self, in_size=cfg.num_units):
         super(LSTMCell, self).__init__()
-        self.states_t0 = (Parameter(torch.randn(cfg.num_units)), Parameter(torch.randn(cfg.num_units)))
+        self.states_t0 = (torch.zeros(cfg.num_units), torch.zeros(cfg.num_units))
 
         self.line_forget = nn.Linear(in_size + cfg.num_units, cfg.num_units)
         self.line_input = nn.Linear(in_size + cfg.num_units, cfg.num_units)
@@ -19,7 +19,7 @@ class LSTMCell(nn.Module):
 
     def forward(self, inputs, states=None):
         h_tm1 = self.states_t0[0].to(inputs.device).expand_as(inputs) if states is None else states[0]
-        c_tm1 = self.states_t0[1].to(inputs.device).expand_as(inputs) if states is None else states[1]
+        s_tm1 = self.states_t0[1].to(inputs.device).expand_as(inputs) if states is None else states[1]
 
         x = torch.cat((h_tm1, inputs), axis=CHANNEL_DIM)
         x_i = torch.sigmoid(self.line_input(x))
@@ -27,10 +27,10 @@ class LSTMCell(nn.Module):
         x_u = torch.tanh(self.line_update(x))
         x_o = torch.sigmoid(self.line_output(x))
 
-        c_t = x_f * c_tm1 + x_i * x_u
-        h_t = x_o * torch.tanh(c_t)
+        s_t = x_f * s_tm1 + x_i * x_u
+        h_t = x_o * torch.tanh(s_t)
 
-        return h_t, (h_t, c_t)
+        return h_t, (h_t, s_t)
 
 
 class LSTMModel(nn.Module):

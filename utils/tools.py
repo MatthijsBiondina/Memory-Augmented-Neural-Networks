@@ -6,17 +6,21 @@ import os
 import sys
 import traceback
 from datetime import datetime
-
+import collections
 import torch
 from PIL import Image
+from torch import Tensor
 from tqdm import tqdm
+
 
 def nan(x):
     if int(torch.sum(torch.isnan(x)).detach().cpu().numpy()):
         return
 
-def random_chance(p:float=0.5) -> bool:
+
+def random_chance(p: float = 0.5) -> bool:
     return (np.random.random_sample() < p)
+
 
 def pyout(*args, ex=None):
     """
@@ -77,3 +81,20 @@ def makedir(path, delete=False):
     os.makedirs(path, exist_ok=True)
 
 
+def watch(loc):
+    ou = {}
+    for name, value in loc:
+        if isinstance(name, str) and name[0] == '_':
+            continue
+        if isinstance(value, Tensor):
+            ou[name] = tuple(value.size())+ (value.grad_fn is not None,)
+        elif isinstance(value, list) and any(isinstance(x, Tensor) for x in value):
+            as_dict = watch([(ii, value[ii]) for ii in range(len(value))])
+            as_list = [None] * (max(as_dict.keys()) + 1)
+            for ii in as_dict.keys():
+                as_list[ii] = as_dict[ii]
+            ou[name] = as_list
+        elif isinstance(value, dict):
+            ou[name] = watch([(key, value[key]) for key in value])
+
+    return dict(sorted(ou.items()))

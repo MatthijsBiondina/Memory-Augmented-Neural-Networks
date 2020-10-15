@@ -1,5 +1,5 @@
 import torch
-from torch import nn, Tensor
+from torch import nn, Tensor, FloatTensor
 from torch.nn import Parameter, ParameterList
 from torch.nn import functional as F
 
@@ -45,23 +45,15 @@ def addressing(k, beta: Tensor, g, s, gamma, m_tm1, a_tm1):
 
 
 class NTMCell(nn.Module):
-    def __init__(self):
+    def __init__(self, in_size=(cfg.num_bits_per_vector + 2), ou_size=(cfg.num_bits_per_vector)):
         super(NTMCell, self).__init__()
 
-        x = nn.init.xavier_uniform(torch.empty(1, cfg.num_memory_locations))
-        a = Parameter(F.softmax(x, 1))
+        # Initialize memory
+        self.H_t0, self.C_t0, self.m_t0, self.R_t0, self.A_t0 = (None,) * 5
+        self._init_t0()
 
-        self.h_t0 = Parameter(nn.init.xavier_uniform(torch.empty(1, cfg.num_units)))
-        self.c_t0 = Parameter(nn.init.xavier_uniform(torch.empty(1, cfg.num_units)))
-        self.m_t0 = nn.init.constant(torch.empty(1, cfg.num_memory_locations, cfg.memory_size), 1e-6)
-        self.R_t0 = ParameterList([Parameter(nn.init.xavier_uniform(torch.empty(1, cfg.memory_size)))
-                                   for _ in range(cfg.num_read_heads)])
-        self.A_t0 = ParameterList(
-            [Parameter(nn.init.xavier_uniform(torch.empty(1, cfg.num_memory_locations)))
-             for _ in range(cfg.num_read_heads + cfg.num_write_heads)])
-
-        self.line_in = nn.Linear(cfg.memory_size * cfg.num_read_heads, cfg.num_units)
-        self.controller = LSTMCell(in_size=cfg.num_units * 2)
+        self.line_prep = nn.Linear(cfg.memory_size * cfg.num_read_heads, cfg.num_units)
+        self.controllers = nn.ModuleList([LSTMCell(in_size=cfg.num_units * 2) for _ in range(cfg.num_layers)])
         self.r_heads = nn.Linear(cfg.num_units,
                                  cfg.num_read_heads * (cfg.memory_size + 1 + 1 + (2 * cfg.conv_shift_range + 1) + 1))
         self.w_heads = nn.Linear(cfg.num_units,
@@ -69,19 +61,65 @@ class NTMCell(nn.Module):
                                                         2 * cfg.memory_size))
         self.line_ou = nn.Linear(cfg.num_units + cfg.num_read_heads * cfg.memory_size, cfg.num_units)
 
-    def forward(self, X, H_tm1=None):
-        h_tm1 = self.h_t0.to(X.device).expand(X.size(0), -1) if H_tm1 is None else H_tm1[0]
-        c_tm1 = self.c_t0.to(X.device).expand(X.size(0), -1) if H_tm1 is None else H_tm1[1]
-        m_tm1 = self.m_t0.to(X.device).expand(X.size(0), -1, -1) if H_tm1 is None else H_tm1[2]
-        R_tm1 = [x_.to(X.device).expand(X.size(0), -1) for x_ in self.R_t0] \
-            if H_tm1 is None else H_tm1[3:3 + cfg.num_read_heads]
-        A_tm1 = [torch.softmax(x_.to(X.device), 1).expand(X.size(0), -1) for x_ in self.A_t0] \
-            if H_tm1 is None else H_tm1[-(cfg.num_read_heads + cfg.num_write_heads):]
+    def _init_t0(self):
+        if cfg.init_mode == 'constant':
+            self.m_t0 = nn.init.constant(torch.empty(1, cfg.num_memory_locations, cfg.memory_size), 1e-6)
+            self.H_t0 = [nn.init.constant(torch.empty(1, cfg.num_units), 1e-6) for _ in range(cfg.num_layers)]
+            self.C_t0 = [nn.init.constant(torch.empty(1, cfg.num_units), 1e-6) for _ in range(cfg.num_layers)]
+            self.R_t0 = [nn.init.constant(torch.empty(1, cfg.memory_size), 1e-6) for _ in range(cfg.num_read_heads)]
+            self.A_t0 = [torch.cat((
+                FloatTensor([[100.]]), nn.init.constant(torch.empty(1, cfg.num_memory_locations - 1), 1e-6)), dim=1) for
+                _ in
+                range(cfg.num_read_heads + cfg.num_write_heads)]
+        elif cfg.init_mode == 'random':
+            self.m_t0 = nn.init.xavier_normal(torch.empty(1, cfg.num_memory_locations, cfg.memory_size))
+            self.H_t0 = [nn.init.xavier_normal(torch.empty(1, cfg.num_units)) for _ in range(cfg.num_layers)]
+            self.C_t0 = [nn.init.xavier_normal(torch.empty(1, cfg.num_units)) for _ in range(cfg.num_layers)]
+            self.R_t0 = [nn.init.xavier_normal(torch.empty(1, cfg.memory_size)) for _ in
+                         range(cfg.num_read_heads)]
+            self.A_t0 = [nn.init.xavier_normal(torch.empty(1, cfg.num_memory_locations)) for _ in
+                         range(cfg.num_read_heads + cfg.num_write_heads)]
+        elif cfg.init_mode == 'learned':
+            self.m_t0 = Parameter(nn.init.xavier_uniform(torch.empty(1, cfg.num_memory_locations, cfg.memory_size)))
+            self.H_t0 = ParameterList(
+                [Parameter(nn.init.xavier_uniform(torch.empty(1, cfg.num_units))) for _ in range(cfg.num_layers)])
+            self.C_t0 = ParameterList(
+                [Parameter(nn.init.xavier_uniform(torch.empty(1, cfg.num_units))) for _ in range(cfg.num_layers)])
+            self.R_t0 = ParameterList(
+                [Parameter(nn.init.xavier_uniform(torch.empty(1, cfg.memory_size))) for _ in range(cfg.num_read_heads)])
+            self.A_t0 = ParameterList(
+                [Parameter(nn.init.xavier_uniform(torch.empty(1, cfg.num_memory_locations)))
+                 for _ in range(cfg.num_read_heads + cfg.num_write_heads)])
+        else:
+            raise ValueError(
+                f"Invalid config option for \"init_mode\": {cfg.init_mode} (\"constant\", \"random\", or \"learned\" expected)")
 
-        h = torch.cat(R_tm1, dim=CHANNEL_DIM)
-        h = self.line_in(h)
-        h = torch.cat((X, h), dim=CHANNEL_DIM)
-        h_t, (_, c_t) = self.controller(h, (h_tm1, c_tm1))
+    def forward(self, X, Persistent_tm1=None):
+        if Persistent_tm1 is None:
+            bs, device = X.size(0), X.device
+            H_tm1 = [h.to(device).expand(bs, -1) for h in self.H_t0]
+            C_tm1 = [c.to(device).expand(bs, -1) for c in self.C_t0]
+            m_tm1 = self.m_t0.to(device).expand(bs, -1, -1)
+            R_tm1 = [F.tanh(r).to(device).expand(bs, -1) for r in self.R_t0]
+            A_tm1 = [F.softmax(a).to(device).expand(bs, -1) for a in self.A_t0]
+        else:
+            H_tm1 = Persistent_tm1['H']
+            C_tm1 = Persistent_tm1['C']
+            m_tm1 = Persistent_tm1['m']
+            R_tm1 = Persistent_tm1['R']
+            A_tm1 = Persistent_tm1['A']
+
+        h_t = torch.cat(R_tm1, dim=CHANNEL_DIM)
+        h_t = self.line_prep(h_t)
+
+        H_t, C_t = [], []
+        for ii in range(cfg.num_layers):
+            h_t = torch.cat((X, h_t), dim=CHANNEL_DIM)
+            h_t, (_, c_t) = self.controllers[ii](h_t, (H_tm1[ii], C_tm1[ii]))
+            H_t.append(h_t)
+            C_t.append(c_t)
+
+        h_t = h_t.clamp(-cfg.clip_value, cfg.clip_value)
 
         R_ou = torch.split(self.r_heads(h_t),
                            cfg.memory_size + 1 + 1 + (2 * cfg.conv_shift_range + 1) + 1,
@@ -91,6 +129,7 @@ class NTMCell(nn.Module):
                            dim=CHANNEL_DIM)
 
         A_t = [None] * (cfg.num_read_heads + cfg.num_write_heads)
+        s_t_debug = []
         for ii, head in enumerate(list(R_ou) + list(W_ou)):
             A_t[ii] = addressing(
                 k=torch.tanh(head[:, :cfg.memory_size]),
@@ -100,6 +139,8 @@ class NTMCell(nn.Module):
                 gamma=F.softplus(head[:, cfg.memory_size + 2 + 2 * cfg.conv_shift_range + 1]),
                 m_tm1=m_tm1,
                 a_tm1=A_tm1[ii])
+            s_t_debug.append(
+                torch.softmax(head[:, cfg.memory_size + 2:cfg.memory_size + 2 + 2 * cfg.conv_shift_range + 1], -1))
 
         # Reading
 
@@ -120,12 +161,11 @@ class NTMCell(nn.Module):
             add_vec = torch.tanh(w_add[ii]).unsqueeze(dim=1)
 
             m_t = m_t * (1. - torch.matmul(w, del_vec)) + torch.matmul(w, add_vec)
-        # m_t = torch.sigmoid(m_t*10-5)-torch.sigmoid(m_t*-10-5)
 
         y_t = self.line_ou(torch.cat([h_t] + R_t, dim=CHANNEL_DIM)).clamp(-cfg.clip_value, cfg.clip_value)
 
         nan(y_t)
-        return y_t, [h_t, c_t, m_t] + R_t + A_t
+        return y_t, {'H': H_t, 'C': C_t, 'm': m_t, 'R': R_t, 'A': A_t, 's_debug': s_t_debug}
 
 
 class NTMModel(nn.Module):
@@ -139,13 +179,15 @@ class NTMModel(nn.Module):
     def forward(self, input, mask=None, return_sequence=False):
         seq, h = [None] * input.size(LENGTH_DIM), [None] * (input.size(LENGTH_DIM) + 1)
         for ii in range(input.size(LENGTH_DIM)):
-            if mask is None or torch.sum(mask[:, ii:]) > 0:
+            if mask is None or torch.sum(mask[:, :, ii:]) > 0:
                 x = self.line_prep(input[:, :, ii])
+                # x = input[:, :, ii]
                 x, h[ii + 1] = self.ntm_cell(x, h[ii])
                 seq[ii] = torch.sigmoid(self.line_post(x))
+                # seq[ii] = torch.sigmoid(x)
             else:
                 seq[ii] = torch.zeros_like(seq[ii - 1])
-                h[ii] = h[ii - 1]
+                h[ii + 1] = h[ii]
         x = torch.stack(seq, dim=LENGTH_DIM)
 
         if return_sequence:
@@ -155,4 +197,5 @@ class NTMModel(nn.Module):
 
     @property
     def device(self):
-        return self.line_prep.bias.device
+        return torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        # return self.ntm_cell.controllers[0].device
