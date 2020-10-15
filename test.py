@@ -2,7 +2,7 @@ import random
 import subprocess
 
 while True:
-    lr = eval(f"1e-{random.uniform(2, 6)}")
+    lr = eval(f"1**(-{random.uniform(2, 6)})")
     bs = int(eval(f"2**{random.uniform(4, 8)}"))
     ms = 32
 

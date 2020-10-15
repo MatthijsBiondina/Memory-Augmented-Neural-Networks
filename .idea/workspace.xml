@@ -158,6 +158,7 @@
       <workItem from="1602592493175" duration="11577000" />
       <workItem from="1602674923140" duration="10201000" />
       <workItem from="1602747384581" duration="24171000" />
+      <workItem from="1602779538777" duration="15000" />
     </task>
     <servers />
   </component>
@@ -307,7 +308,6 @@
     <watches-manager>
       <configuration name="PythonConfigurationType">
         <watch expression="tools.watch([(loc_, eval(loc_)) for loc_ in locals()])" language="Python" />
-        <watch expression="" />
       </configuration>
     </watches-manager>
   </component>
