@@ -9,6 +9,8 @@ from bokeh.palettes import BuPu
 import holoviews as hv
 import numpy as np
 from utils import tools
+import json
+
 hv.extension('bokeh')
 
 from utils.tools import makedir
@@ -25,8 +27,23 @@ def not_none(vlist, klist=None):
 class BokehBoard:
     def __init__(self, fname=cfg.experiment_name):
         makedir(os.path.join('.', 'res', fname), delete=True)
+        self.folder = os.path.join('.','res',fname)
         self.fpath = os.path.join('.', 'res', fname, 'loss.html')
-        self.metrics = {'episode': [], 'train_loss': [], 'test_loss': [], 'bit_loss':[]}
+        self.metrics = {'episode': [], 'train_loss': [], 'test_loss': [], 'bit_loss': []}
+
+    def save_metrics(self):
+        with open(os.path.join(self.folder,'metrics.json'), 'w+') as f:
+            json.dump(self.metrics, f)
+        try:
+            items = [item for item in dir(cfg) if not item.startswith('__')]
+            with open(os.path.join(self.folder,'config.txt'), 'w') as f:
+                pad_len = max([len(x) for x in items])
+                for item in items:
+                    value = eval(f"cfg.{item}")
+                    f.write(f"{item}{' '*(pad_len-len(item))} := {value}\n")
+        except:
+            pass
+
 
     def update_plots(self, epoch, loss_data, vis_data, bit_data):
 
@@ -34,10 +51,11 @@ class BokehBoard:
         fig_io, ii = self.io_plot(*vis_data[:2])
         fig_mem = self.mem_plot(vis_data[2], ii)
         # fig_db = self.db_plot(vis_data[2],ii)
-        fig_bit = self.bit_plot((epoch+1)*cfg.batch_size, bit_data)
+        fig_bit = self.bit_plot((epoch + 1) * cfg.batch_size, bit_data)
 
         fig = gridplot([[fig_loss, fig_io], [fig_bit, fig_mem]])
 
+        self.save_metrics()
         if epoch % cfg.steps_per_eval == 0:
             output_file(self.fpath, title=self.fpath.split('/')[-2])
             save(fig)
@@ -91,7 +109,14 @@ class BokehBoard:
                     a_h = a_h.detach().cpu().numpy()[ii]
                     a_plt[t, :] = a_h
             except:
-                return
+                pass
+            try:
+                A[0][t, :] = H[t]['w_w'][ii].detach().cpu().numpy()
+                for a_plt, a_h in zip(A[1:], H[t]['W_r']):
+                    a_plt[t,:] = a_h.detach().cpu().numpy()[ii]
+            except:
+                pass
+
         for a_plt in A:
             a_plt[-1, :] = np.ones(cfg.num_memory_locations)
         data = np.concatenate(A, axis=0)
@@ -110,7 +135,7 @@ class BokehBoard:
         for t in range(len(H)):
             for c_plt, c_h in zip(C, H[t]['s_debug'][::-1]):
                 c_h = c_h.detach().cpu().numpy()[ii]
-                c_plt[t,:] = c_h[::-1]
+                c_plt[t, :] = c_h[::-1]
         for c_plt in C:
             c_plt[-1, :] = np.ones(cfg.conv_shift_range * 2 + 1)
         data = np.concatenate(C, axis=0)

@@ -29,10 +29,10 @@ task: str = 'copy'
 num_bits_per_vector: int = 8
 max_seq_len: int = 20
 max_repeats: int = 10
-max_items: int = 3  # maximum number of items for associative recall task
+max_items: int = 6  # maximum number of items for associative recall task
 
 verbose: bool = True  # if true prints lots of feedback
-experiment_name: str = f"{learning_rate}_{batch_size}_{num_memory_locations}"
+experiment_name: str = f"{mann}_{learning_rate}_{batch_size}_{num_memory_locations}" if args else "debug"
 steps_per_eval: int = 10
 
 input_size = num_bits_per_vector + 2

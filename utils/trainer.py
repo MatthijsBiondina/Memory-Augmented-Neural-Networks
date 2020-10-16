@@ -31,7 +31,7 @@ class TrainLoop:
     def summary(self):
         data_example = self.data.dataset[0]
         # plots(data_example)
-        # summary(self.model, self.data.dataset[0][0].size())
+        summary(self.model, self.data.dataset[0][0].size())
 
     def fit(self):
         # torch.autograd.set_detect_anomaly(True)
