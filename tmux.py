@@ -10,8 +10,8 @@ def start_session(ii, cuda=''):
     time.sleep(1)
 
 for ii in range(5):
-    start_session(ii, 1)
-for ii in range(5, 15):
     start_session(ii, 2)
+for ii in range(5, 15):
+    start_session(ii, 1)
 
-time.sleep(60)
+time.sleep(10)
