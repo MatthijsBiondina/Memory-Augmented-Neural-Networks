@@ -4,7 +4,7 @@ from datetime import datetime
 
 args = len(sys.argv) > 1
 
-mann: str = 'ntm' # lstm | ntm | dnc
+mann: str = 'dnc' # lstm | ntm | dnc
 num_layers: int = 1
 num_units: int = 100
 num_memory_locations: int = 32 if not args else int(sys.argv[3])
