@@ -13,3 +13,5 @@ for ii in range(5):
     start_session(ii, 1)
 for ii in range(5, 15):
     start_session(ii, 2)
+
+time.sleep(60)
