@@ -1,3 +1,4 @@
+import sys
 from math import ceil
 
 import torch
@@ -31,7 +32,9 @@ class TrainLoop:
     def summary(self):
         data_example = self.data.dataset[0]
         # plots(data_example)
-        summary(self.model, self.data.dataset[0][0].size())
+        # summary(self.model, (self.data.dataset[0][0].size()[0], 1), depth=99, verbose=1,
+        #         col_names=("input_size", "output_size", "num_params", "kernel_size", "mult_adds"))
+        # sys.exit(0)
 
     def fit(self):
         # torch.autograd.set_detect_anomaly(True)

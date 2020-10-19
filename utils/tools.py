@@ -87,7 +87,7 @@ def watch(loc):
         if isinstance(name, str) and name[0] == '_':
             continue
         if isinstance(value, Tensor):
-            ou[name] = tuple(value.size())+ (value.grad_fn is not None,)
+            ou[name] = tuple(value.size())# + (value.grad_fn is not None,)
         elif isinstance(value, list) and any(isinstance(x, Tensor) for x in value):
             as_dict = watch([(ii, value[ii]) for ii in range(len(value))])
             as_list = [None] * (max(as_dict.keys()) + 1)
@@ -98,3 +98,8 @@ def watch(loc):
             ou[name] = watch([(key, value[key]) for key in value])
 
     return dict(sorted(ou.items()))
+
+def str_clean(string, *args):
+    for arg in args:
+        string = string.replace(arg,'')
+    return string

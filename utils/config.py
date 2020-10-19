@@ -4,7 +4,7 @@ from datetime import datetime
 
 args = len(sys.argv) > 1
 
-mann: str = 'dnc'
+mann: str = 'ntm' # lstm | ntm | dnc
 num_layers: int = 1
 num_units: int = 100
 num_memory_locations: int = 32 if not args else int(sys.argv[3])
@@ -25,7 +25,7 @@ eval_batch_size: int = 1
 curriculum: str = 'uniform'  # none | uniform | naive | look_back | look_back_and_forward | prediction_gain
 pad_to_max_seq_len: bool = False
 
-task: str = 'copy'
+task: str = 'associative_recall'
 num_bits_per_vector: int = 8
 max_seq_len: int = 20
 max_repeats: int = 10

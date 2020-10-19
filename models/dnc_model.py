@@ -42,7 +42,7 @@ class Controller(nn.Module):
         self.line_v = nn.Linear(cfg.num_units * cfg.num_layers, cfg.output_size)
         self.line_xi = nn.Linear(cfg.num_units * cfg.num_layers,
                                  cfg.memory_size * cfg.num_read_heads + 3 * cfg.memory_size + 5 * cfg.num_read_heads + 3)
-        self.line_y = nn.Linear(cfg.memory_size * cfg.num_read_heads, cfg.output_size)
+        # self.line_y = nn.Linear(cfg.memory_size * cfg.num_read_heads, cfg.output_size)
 
     def forward(self, chi_t, H_tm1, S_tm1):
         H_t, S_t = [torch.empty(0)] * cfg.num_layers, [torch.empty(0)] * cfg.num_layers
@@ -255,7 +255,6 @@ class DNCModel(nn.Module):
     def __init__(self):
         super(DNCModel, self).__init__()
 
-        # self.line_prep = nn.Linear(cfg.input_size, cfg.num_units)
         self.dnc_cell = DNCCell()
         self.line_post = nn.Linear(cfg.memory_size, cfg.output_size)
 
