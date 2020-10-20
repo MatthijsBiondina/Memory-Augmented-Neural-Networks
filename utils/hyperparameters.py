@@ -12,10 +12,11 @@ import matplotlib
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
-
+from PyPDF2 import PdfFileWriter, PdfFileReader
 
 class Hyper:
     def __init__(self, root='./res'):
+        self.root = root
         self.folders = list(self._index(root))
         self.scores = {}
         self.times = {}
@@ -24,6 +25,17 @@ class Hyper:
         self.params['score'] = list(self._read_score())
 
         self.df = pd.DataFrame.from_dict(self.params)
+
+    def merge(self):
+        pdf_writer = PdfFileWriter()
+        for file in listdir(self.root,end='.pdf'):
+            pdf_reader = PdfFileReader(file)
+            for page in range(pdf_reader.getNumPages()):
+                pdf_writer.addPage(pdf_reader.getPage(page))
+            os.remove(file)
+        with open(os.path.join(self.root,'results.pdf'), 'wb+') as f:
+            pdf_writer.write(f)
+
 
     def plot_scores(self,hue='learning_rate'):
         cmap = cm.cool
@@ -62,6 +74,7 @@ class Hyper:
                                   y=self.df['score'],
                                   kind='scatter')
                     plt.savefig(f'./res/{key}_scatter.pdf')
+                    plt.show()
             except:
                 pass
 
@@ -73,6 +86,8 @@ class Hyper:
         return Dou
 
     def _index(self, root):
+        for file in listdir(root, end='pdf'):
+            os.remove(file)
         for folder in listdir(root):
             if os.path.isfile(os.path.join(folder, 'loss.html')):
                 yield folder

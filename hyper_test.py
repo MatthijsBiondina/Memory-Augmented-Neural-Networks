@@ -1,3 +1,5 @@
+import subprocess
+
 from utils.hyperparameters import Hyper
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -13,11 +15,16 @@ import seaborn as sns
 #
 #         plt.show()
 
+
+
 H = Hyper()
 H.plot_scores('learning_rate')
 H.plot_scores('batch_size')
 H.heatmaps()
 
-# plt.savefig('./res/results.pdf')
+H.merge()
 
-plt.show()
+#
+# # plt.savefig('./res/results.pdf')
+#
+# plt.show()

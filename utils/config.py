@@ -16,18 +16,18 @@ clip_value: int = 20  # Maximum absolute value of controller and outputs
 init_mode: str = 'learned'  # learned | constant | random
 
 optimizer: str = 'Adam'  # RMSProp | Adam
-learning_rate: float = 0.01 if not args else float(sys.argv[1])
+learning_rate: float = 3e-3 if not args else float(sys.argv[1])
 max_grad_norm: float = 10.
-num_train_steps: int = 31250 * 2
-batch_size: int = 128 if not args else int(sys.argv[2])
+num_train_steps: int = 31250 * 10
+batch_size: int = 64 if not args else int(sys.argv[2])
 eval_batch_size: int = 1
 
 curriculum: str = 'uniform'  # none | uniform | naive | look_back | look_back_and_forward | prediction_gain
 pad_to_max_seq_len: bool = False
 
-task: str = 'associative_recall'
+task: str = 'copy_repeat' # copy | copy_repeat | associative_recall
 num_bits_per_vector: int = 8
-max_seq_len: int = 20
+max_seq_len: int = 10
 max_repeats: int = 10
 max_items: int = 6  # maximum number of items for associative recall task
 
