@@ -18,6 +18,7 @@ class StockDataset(Dataset):
         self.curriculum = cfg.curriculum
         self.curriculum_point = cfg.max_seq_len
         self.prices, self.data, self.indices = self._index_stocks()
+        tools.pyout(f"dataset size: {len(self)}")
 
     def __len__(self):
         return len(self.indices)
@@ -83,6 +84,6 @@ class StockDataset(Dataset):
                         indices.append((ii, jj))
             except ValueError as e:
                 tools.pyout(f"Invalid symbol: {symbol.split('/')[-1]}")
-            break
+            # break
 
         return prices, dataset, indices
