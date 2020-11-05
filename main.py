@@ -5,6 +5,7 @@ from data.copy_dataset import CopyDataset
 import torch
 import utils.config as cfg
 from data.copy_repeat_dataset import CopyRepeatDataset
+from data.stock_dataset import StockDataset
 from models.dnc_model import DNCModel
 from models.lstm_model import LSTMModel
 from models.ntm_model import NTMModel
@@ -26,8 +27,10 @@ elif cfg.task == 'copy_repeat':
     data = CopyRepeatDataset()
 elif cfg.task == 'associative_recall':
     data = AssociativeRecallDataset()
+elif cfg.task == 'stocks':
+    data = StockDataset()
 
-dataset = DataLoader(data, batch_size=cfg.batch_size, shuffle=False, num_workers=0)
+dataset = DataLoader(data, batch_size=cfg.batch_size, shuffle=True, num_workers=0)
 
 if cfg.mann == 'lstm':
     model = LSTMModel().to(device)
@@ -47,7 +50,7 @@ train_loop.summary()
 train_loop.fit()
 train_loop.evaluate()
 train_loop.visualize()
-train_loop.save(path=f"./res/{cfg.task}_model.pth")
+# train_loop.save(path=f"./res/{cfg.task}_model.pth")
 
 state_dict = model.state_dict()
 pass

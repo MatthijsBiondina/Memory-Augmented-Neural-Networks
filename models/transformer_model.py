@@ -19,7 +19,7 @@ class TransformerModel(nn.Module):
         src = self.line_prep(src)
         tgt = torch.zeros_like(src)
         tgt = self.transformer(src, tgt)
-        out = torch.sigmoid(self.line_post(tgt))
+        out = cfg.output_func(self.line_post(tgt))
         out = out.transpose(0, 1).transpose(1, 2)
         return out
 

@@ -26,37 +26,42 @@ def not_none(vlist, klist=None):
 
 class BokehBoard:
     def __init__(self, fname=cfg.experiment_name):
-        makedir(os.path.join('.', 'res', fname), delete=True)
-        self.folder = os.path.join('.','res',fname)
-        self.fpath = os.path.join('.', 'res', fname, 'loss.html')
+        makedir(os.path.join('.', 'res', 'ou', fname), delete=True)
+        self.folder = os.path.join('.', 'res', 'ou', fname)
+        self.fpath = os.path.join('.', 'res', 'ou', fname, 'loss.html')
         self.metrics = {'episode': [], 'train_loss': [], 'test_loss': [], 'bit_loss': []}
 
     def save_metrics(self):
-        with open(os.path.join(self.folder,'metrics.json'), 'w+') as f:
-            json.dump(self.metrics, f)
+        with open(os.path.join(self.folder, 'metrics.json'), 'w+') as f:
+            try:
+                json.dump(self.metrics, f)
+            except TypeError:
+                pass
         try:
             items = [item for item in dir(cfg) if not item.startswith('__')]
-            with open(os.path.join(self.folder,'config.txt'), 'w') as f:
+            with open(os.path.join(self.folder, 'config.txt'), 'w') as f:
                 pad_len = max([len(x) for x in items])
                 for item in items:
                     value = eval(f"cfg.{item}")
-                    f.write(f"{item}{' '*(pad_len-len(item))} := {value}\n")
+                    f.write(f"{item}{' ' * (pad_len - len(item))} := {value}\n")
         except:
             pass
 
-
-    def update_plots(self, epoch, loss_data, vis_data, bit_data):
-
-        fig_loss = self.loss_plot((epoch + 1) * cfg.batch_size, *loss_data)
+    def update_plots(self, epoch, loss_data, vis_data, bit_data=None, steps=None):
+        if steps is None:
+            fig_loss = self.loss_plot((epoch + 1) * cfg.batch_size, *loss_data)
+        else:
+            fig_loss = self.loss_plot(steps, *loss_data)
         fig_io, ii = self.io_plot(*vis_data[:2])
+        fig_st = self.stock_plot(*vis_data[:2], ii)
         fig_mem = self.mem_plot(vis_data[2], ii)
         # fig_db = self.db_plot(vis_data[2],ii)
-        fig_bit = self.bit_plot((epoch + 1) * cfg.batch_size, bit_data)
+        # fig_bit = self.bit_plot((epoch + 1) * cfg.batch_size, bit_data)
 
-        fig = gridplot([[fig_loss, fig_io], [fig_bit, fig_mem]])
+        fig = gridplot([[fig_loss, fig_io], [fig_st, fig_mem]])
 
         self.save_metrics()
-        if epoch % cfg.steps_per_eval == 0:
+        if epoch % cfg.steps_per_eval == 0 or steps is not None:
             output_file(self.fpath, title=self.fpath.split('/')[-2])
             save(fig)
         return
@@ -75,6 +80,27 @@ class BokehBoard:
                  line_color="orchid", line_width=3, line_alpha=0.75)
         return fig
 
+    def stock_plot(self, X, Y, ii):
+        fig = figure(width=950, height=500, title="Prediction", x_axis_label='time', y_axis_label='quote')
+        x = X[ii][0][1:cfg.max_seq_len * cfg.history_multiplier + 1].cpu().numpy()
+        for jj in range(1, x.shape[0]):
+            x[jj] += x[jj - 1]
+
+        mu = Y[ii][0][cfg.max_seq_len * cfg.history_multiplier + 2:].cpu().numpy()
+        std = Y[ii][1][cfg.max_seq_len * cfg.history_multiplier + 2:].cpu().numpy()
+        while np.sum(mu[-1]) == 0:
+            mu = mu[:-1]
+            std = std[:-1]
+        mu += x[-1]
+
+        fig.line(np.arange(0, x.shape[0]),
+                 x, line_color="royalblue", line_width=3, line_alpha=0.75)
+        fig.line(np.arange(x.shape[0], x.shape[0] + mu.shape[0]),
+                 mu, line_color="orchid", line_width=3, line_alpha=0.75)
+        fig.varea(np.arange(x.shape[0], x.shape[0] + mu.shape[0]),
+                  mu - std, mu + std, color="orchid", alpha=0.25)
+        return fig
+
     def bit_plot(self, episode, bit_loss):
         self.metrics['bit_loss'].append(bit_loss)
 
@@ -88,8 +114,8 @@ class BokehBoard:
         # get index of longest sequence for plotting
         ii = torch.argmax(torch.argmax(X[:, -1, :], dim=1)).detach().cpu().item()
 
-        X = X.detach().cpu().numpy()[ii]
-        Y = Y.detach().cpu().numpy()[ii]
+        X = X.detach().clamp(-1,1).cpu().numpy()[ii]
+        Y = Y.detach().clamp(-1,1).cpu().numpy()[ii]
 
         data = np.concatenate((X, Y), axis=0)[::-1].T
         data = [(i, j, data[i, j]) for i in range(data.shape[0]) for j in range(data.shape[1])]
@@ -113,7 +139,7 @@ class BokehBoard:
             try:
                 A[0][t, :] = H[t]['w_w'][ii].detach().cpu().numpy()
                 for a_plt, a_h in zip(A[1:], H[t]['W_r']):
-                    a_plt[t,:] = a_h.detach().cpu().numpy()[ii]
+                    a_plt[t, :] = a_h.detach().cpu().numpy()[ii]
             except:
                 pass
 

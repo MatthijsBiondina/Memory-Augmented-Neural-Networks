@@ -211,10 +211,17 @@ class DNCCell(nn.Module):
         return K_r, Beta_r, k_w, beta_w, e, v, F, g_a, g_w, PI
 
     def __init_learnable_parameters(self):
-        self.R_t0 = ParameterList([Parameter(nn.init.xavier_uniform(torch.empty(1, cfg.memory_size)).to(self.device))
-                                   for _ in range(cfg.num_read_heads)])
-        self.M_t0 = Parameter(
-            nn.init.xavier_uniform(torch.empty(1, cfg.num_memory_locations, cfg.memory_size)).to(self.device))
+        if cfg.init_mode == 'learned':
+            self.R_t0 = ParameterList(
+                [Parameter(nn.init.xavier_uniform(torch.empty(1, cfg.memory_size)).to(self.device))
+                 for _ in range(cfg.num_read_heads)])
+            self.M_t0 = Parameter(
+                nn.init.xavier_uniform(torch.empty(1, cfg.num_memory_locations, cfg.memory_size)).to(self.device))
+        else:
+            self.R_t0 = [nn.init.xavier_uniform(torch.empty(1, cfg.memory_size)).to(self.device) * 1e-3
+                         for _ in range(cfg.num_read_heads)]
+            self.M_t0 = nn.init.xavier_uniform(torch.empty(1, cfg.num_memory_locations, cfg.memory_size)).to(
+                self.device) * 1e-3
 
     def __init_t0(self, bs):
         R_t0 = [r.expand(bs, -1) for r in self.R_t0]
@@ -258,12 +265,14 @@ class DNCModel(nn.Module):
         self.dnc_cell = DNCCell()
         self.line_post = nn.Linear(cfg.memory_size, cfg.output_size)
 
+
     def forward(self, X, mask=None, return_sequence=False):
         y, h = [None] * X.size(2), [None] * (X.size(2) + 1)
         for ii in range(X.size(2)):
             if mask is None or torch.sum(mask[:, :, ii:]) > 0:
                 y[ii], h[ii + 1] = self.dnc_cell(X[:, :, ii], h[ii])
-                y[ii] = sigmoid(self.line_post(y[ii]))
+                y[ii] = self.line_post(y[ii])
+                y[ii] = cfg.output_func(y[ii])
             else:
                 y[ii], h[ii + 1] = torch.zeros_like(y[ii - 1]), h[ii]
         y = torch.stack(y, dim=2)

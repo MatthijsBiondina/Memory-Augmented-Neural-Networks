@@ -48,7 +48,7 @@ class LSTMModel(nn.Module):
         for ii in range(x.size(LENGTH_DIM)):
             seq[ii], h = self.lstm_cell(x[:, :, ii], h)
         x = torch.stack(seq, dim=LENGTH_DIM)
-        x = torch.sigmoid(self.dens_post(x))
+        x = cfg.output_func(self.dens_post(x))
         return x
 
     @property

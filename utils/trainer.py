@@ -1,19 +1,22 @@
 import sys
 from math import ceil
-
+from numpy import pi
 import torch
 from torch import optim, Tensor, nn, autograd, FloatTensor
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from torchsummary import summary
 import utils.config as cfg
 from utils.board import BokehBoard
 from utils.tools import poem, pyout, nan
 from utils.utils import plots, plot_ntm
+from utils import tools
 
 
 class TrainLoop:
-    def __init__(self, data, model):
+    def __init__(self, data, model, eval_data=None):
         self.data = data
+        self.eval_data: DataLoader = eval_data if eval_data is not None else data
         self.model = model
         self.device = model.device
         self.loss_obj = nn.MSELoss(reduction='none')
@@ -44,8 +47,8 @@ class TrainLoop:
         for epoch in pbar:
             self.data.dataset.curriculum = cfg.curriculum
 
-            rloss, bloss = 0., 0.
-            for X, T, M in self.data:
+            train_loss = 0.
+            for ii, (X, T, M) in enumerate(self.data):
                 X, T, M = X.to(self.device), T.to(self.device), M.to(self.device)
 
                 self.model.zero_grad()
@@ -57,17 +60,26 @@ class TrainLoop:
 
                 nn.utils.clip_grad_norm_(self.model.parameters(), cfg.max_grad_norm)
                 self.optimizer.step()
-                rloss += loss.item() * X.size(0)
-                bloss += self.bit_loss(T, Y, M).item() * X.size(0)
+                train_loss += loss.item() * X.size(0)
 
-            pbar.desc = poem(rloss / len(self.data.dataset))
+                pbar.desc = poem(train_loss / (ii + 1))
+                if ii % cfg.steps_per_eval == 0:
+                    with torch.no_grad():
+                        for X, T, M in self.eval_data:
+                            X, T, M = X.to(self.device), T.to(self.device), M.to(self.device)
+                            Y, H = self.model(X, mask=M, return_sequence=True)
+                            loss = self.loss_func(T, Y, M)
+                            break
 
-            self.board.update_plots(epoch,
-                                    loss_data=(rloss / len(self.data.dataset), None),
-                                    vis_data=(X, Y, H),
-                                    bit_data=bloss / len(self.data.dataset))
+                    self.board.update_plots(epoch,
+                                            loss_data=(train_loss / (cfg.steps_per_eval * cfg.batch_size), loss.item()),
+                                            vis_data=(X, Y * M, H),
+                                            steps=epoch * len(self.data) + ii * cfg.batch_size)
+
+                    train_loss = 0.
+
             if cfg.curriculum == "prediction_gain":
-                if rloss / len(self.data.dataset) < 0.01:
+                if train_loss / len(self.data.dataset) < 0.01:
                     self.data.dataset.curriculum_point += 1
                 self.data.dataset.curriculum_point = min(self.data.dataset.curriculum_point, cfg.max_seq_len)
             else:
@@ -96,19 +108,30 @@ class TrainLoop:
 
     def loss_func(self, y_true: Tensor, y_pred: Tensor, mask: Tensor = None, train=True):
         nan(y_pred)
-        loss = self.loss_obj(y_pred.clamp(0, 1), y_true)
-        loss = loss if mask is None else loss * mask
-        # loss = torch.mean(loss) if mask is None else torch.sum(loss) / torch.sum(mask)
-        loss = (torch.mean(loss, dim=(1, 2)) if mask is None
-                else torch.sum(loss, dim=(1, 2)) / torch.sum(mask, dim=(1, 2)))
-        if train:
-            with torch.no_grad():
-                mu, std = loss.mean(), loss.std()
-                outliers = torch.logical_or(loss < mu - std, loss > mu + std).type(FloatTensor).to(loss.device)
+        if cfg.task in ('copy', 'copy_repeat', 'associative_recall'):
+            loss = self.loss_obj(y_pred.clamp(0, 1), y_true)
+            loss = loss if mask is None else loss * mask
+            # loss = torch.mean(loss) if mask is None else torch.sum(loss) / torch.sum(mask)
+            loss = (torch.mean(loss, dim=(1, 2)) if mask is None
+                    else torch.sum(loss, dim=(1, 2)) / torch.sum(mask, dim=(1, 2)))
+            if train:
+                with torch.no_grad():
+                    mu, std = loss.mean(), loss.std()
+                    outliers = torch.logical_or(loss < mu - std, loss > mu + std).type(FloatTensor).to(loss.device)
 
-            loss = (1. - outliers) * loss + outliers * mu
-        loss = torch.mean(loss)
-        return loss
+                loss = (1. - outliers) * loss + outliers * mu
+            loss = torch.mean(loss)
+            return loss
+        elif cfg.task == 'stocks':
+            mu, std = y_pred[:, 0].unsqueeze(dim=1), y_pred[:, 1].unsqueeze(dim=1)
+            prob = 1 / torch.sqrt(2 * pi * torch.square(torch.ones_like(std)) + 1e-6) \
+                   * torch.exp(-torch.square(y_true - mu) / (2 * torch.square(torch.ones_like(std)) + 1e-6))
+            loss = -prob * mask
+            loss = (torch.mean(loss, dim=(1, 2)) if mask is None
+                    else torch.sum(loss, dim=(1, 2)) / torch.sum(mask, dim=(1, 2)))
+            loss = torch.mean(loss)
+
+            return loss
 
     def bit_loss(self, y_true: Tensor, y_pred: Tensor, mask: Tensor = None):
         y_bit_true, y_bit_pred = (y_true > 0.5) + 0., (y_pred > 0.5) + 0.

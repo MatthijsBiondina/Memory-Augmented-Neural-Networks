@@ -1,3 +1,5 @@
+from random import randint, random
+
 import torch
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -45,3 +47,17 @@ def plot_ntm(X, Y, H):
     plt.show()
 
     return
+
+def sample_seq_len(curriculum:str=cfg.curriculum, curriculum_point:str=cfg.max_seq_len):
+    if curriculum is "uniform":
+        return randint(1, cfg.max_seq_len)
+    elif curriculum is "none":
+        return cfg.max_seq_len
+    elif curriculum is "naive":
+        return max(1, curriculum_point)
+    elif curriculum is "look_back":
+        return curriculum_point if random() < 0.9 else randint(1, curriculum_point)
+    elif curriculum is "look_back_and_forward":
+        return curriculum_point if random() < 0.8 else randint(1, cfg.max_seq_len)
+    else:
+        return cfg.max_seq_len

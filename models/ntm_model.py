@@ -5,29 +5,30 @@ from torch.nn import functional as F
 
 import utils.config as cfg
 # from models.lstm_model import LSTMCell
+from models.lstm_model import LSTMCell
 from utils.tools import nan
 from utils import tools
 
 BATCH_DIM, CHANNEL_DIM, LENGTH_DIM = 0, 1, 2
 
 
-class LSTMCell(nn.Module):
-    def __init__(self, in_size=cfg.num_units):
-        super(LSTMCell, self).__init__()
-
-        self.line_f = nn.Linear(in_size, cfg.num_units)
-        self.line_i = nn.Linear(in_size, cfg.num_units)
-        self.line_u = nn.Linear(in_size, cfg.num_units)
-        self.line_o = nn.Linear(in_size, cfg.num_units)
-
-    def forward(self, X_t, s_tm1=None):
-        i_t = sigmoid(self.line_i(X_t))
-        f_t = sigmoid(self.line_f(X_t))
-        s_t = f_t * s_tm1 + i_t * torch.tanh(self.line_u(X_t))
-        o_t = sigmoid(self.line_o(X_t))
-        h_t = o_t * torch.tanh(s_t)
-
-        return h_t, s_t
+# class LSTMCell(nn.Module):
+#     def __init__(self, in_size=cfg.num_units):
+#         super(LSTMCell, self).__init__()
+#
+#         self.line_f = nn.Linear(in_size, cfg.num_units)
+#         self.line_i = nn.Linear(in_size, cfg.num_units)
+#         self.line_u = nn.Linear(in_size, cfg.num_units)
+#         self.line_o = nn.Linear(in_size, cfg.num_units)
+#
+#     def forward(self, X_t, s_tm1=None):
+#         i_t = sigmoid(self.line_i(X_t))
+#         f_t = sigmoid(self.line_f(X_t))
+#         s_t = f_t * s_tm1 + i_t * torch.tanh(self.line_u(X_t))
+#         o_t = sigmoid(self.line_o(X_t))
+#         h_t = o_t * torch.tanh(s_t)
+#
+#         return h_t, s_t
 
 
 def addressing(k, beta: Tensor, g, s, gamma, m_tm1, a_tm1):
@@ -82,7 +83,7 @@ class NTMCell(nn.Module):
         self.H_t0, self.C_t0, self.m_t0, self.R_t0, self.A_t0 = (None,) * 5
         self._init_learnable_parameters()
 
-        # self.line_prep = nn.Linear(cfg.memory_size * cfg.num_read_heads, cfg.num_units)
+        self.line_prep = nn.Linear(cfg.memory_size * cfg.num_read_heads, cfg.num_units)
         self.controllers = nn.ModuleList(
             [LSTMCell(in_size=cfg.input_size + cfg.num_units) for _ in range(cfg.num_layers)])
         self.r_heads = nn.Linear(cfg.num_units,
@@ -208,7 +209,7 @@ class NTMModel(nn.Module):
         for ii in range(X.size(LENGTH_DIM)):
             if mask is None or torch.sum(mask[:, :, ii:]) > 0:
                 y[ii], h[ii + 1] = self.ntm_cell(X[:, :, ii], h[ii])
-                y[ii] = sigmoid(self.line_post(y[ii]))
+                y[ii] = cfg.output_func(self.line_post(y[ii]))
             else:
                 y[ii] = torch.zeros_like(y[ii - 1])
                 h[ii + 1] = h[ii]
@@ -223,4 +224,3 @@ class NTMModel(nn.Module):
     @property
     def device(self):
         return torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        # return self.ntm_cell.controllers[0].device

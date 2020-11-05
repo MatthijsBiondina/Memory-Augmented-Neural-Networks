@@ -1,4 +1,5 @@
 import json
+from random import shuffle
 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tqdm import tqdm
@@ -46,9 +47,11 @@ class Hyper:
 
         cr_min = np.log10(min(self.params[hue][ii] for ii in self.scores.keys()))
         cr_max = np.log10(max(self.params[hue][ii] for ii in self.scores.keys()))
-        for key in tqdm(self.scores):
+        keys = list(self.scores.keys())
+        shuffle(keys)
+        for key in tqdm(keys):
             color = (np.log10(self.params[hue][key]) - cr_min) / (cr_max-cr_min)
-            color = cmap(color)[:3] + (0.5,)
+            color = cmap(color)[:3] + (0.1,)
             plt.plot(self.times[key], self.scores[key], color=color,linewidth=2)
 
 
