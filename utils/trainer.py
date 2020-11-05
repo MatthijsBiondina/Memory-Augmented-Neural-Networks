@@ -1,17 +1,13 @@
-import sys
 from math import ceil
-from numpy import pi
 import torch
-from torch import optim, Tensor, nn, autograd, FloatTensor
+from torch import optim, nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from torchsummary import summary
 import utils.config as cfg
+from utils.loss_functions import Loss
 from utils.board import BokehBoard
-from utils.tools import poem, pyout, nan
-from utils.utils import plots, plot_ntm
+from utils.tools import poem, pyout
 from utils import tools
-
 
 class TrainLoop:
     def __init__(self, data, model, eval_data=None):
@@ -19,7 +15,7 @@ class TrainLoop:
         self.eval_data: DataLoader = eval_data if eval_data is not None else data
         self.model = model
         self.device = model.device
-        self.loss_obj = nn.MSELoss(reduction='none')
+        self.loss_func = Loss()
         if cfg.optimizer == 'Adam':
             self.optimizer = optim.Adam(self.model.parameters(), lr=cfg.learning_rate)
         elif cfg.optimizer == 'RMSProp':
@@ -63,6 +59,7 @@ class TrainLoop:
                 train_loss += loss.item() * X.size(0)
 
                 pbar.desc = poem(train_loss / (ii + 1))
+                pbar.update(0)
                 if ii % cfg.steps_per_eval == 0:
                     with torch.no_grad():
                         for X, T, M in self.eval_data:
@@ -71,10 +68,13 @@ class TrainLoop:
                             loss = self.loss_func(T, Y, M)
                             break
 
-                    self.board.update_plots(epoch,
-                                            loss_data=(train_loss / (cfg.steps_per_eval * cfg.batch_size), loss.item()),
-                                            vis_data=(X, Y * M, H),
-                                            steps=epoch * len(self.data) + ii * cfg.batch_size)
+                    self.board.update_plots(
+                        epoch,
+                        loss_data=(train_loss / (cfg.steps_per_eval * cfg.batch_size), loss.item()),
+                        vis_data=(X, Y, H),
+                        steps=epoch * len(self.data.dataset) + ii * cfg.batch_size,
+                        target=T,
+                        mask=M)
 
                     train_loss = 0.
 
@@ -95,7 +95,6 @@ class TrainLoop:
                 loss = self.loss_func(T, Y, M)
                 rloss += loss.item() * X.size(0)
         pyout(f"Test score: {rloss / len(self.data.dataset)}")
-        # plots((X[0], T[0], Y[0]))
 
     def visualize(self):
         self.data.dataset.curriculum = "none"
@@ -106,37 +105,37 @@ class TrainLoop:
 
                 return (X.detach().cpu().numpy()[0], Y.detach().cpu().numpy()[0], H)
 
-    def loss_func(self, y_true: Tensor, y_pred: Tensor, mask: Tensor = None, train=True):
-        nan(y_pred)
-        if cfg.task in ('copy', 'copy_repeat', 'associative_recall'):
-            loss = self.loss_obj(y_pred.clamp(0, 1), y_true)
-            loss = loss if mask is None else loss * mask
-            # loss = torch.mean(loss) if mask is None else torch.sum(loss) / torch.sum(mask)
-            loss = (torch.mean(loss, dim=(1, 2)) if mask is None
-                    else torch.sum(loss, dim=(1, 2)) / torch.sum(mask, dim=(1, 2)))
-            if train:
-                with torch.no_grad():
-                    mu, std = loss.mean(), loss.std()
-                    outliers = torch.logical_or(loss < mu - std, loss > mu + std).type(FloatTensor).to(loss.device)
+    # def loss_func(self, y_true: Tensor, y_pred: Tensor, mask: Tensor = None, train=True):
+    #     nan(y_pred)
+    #     if cfg.task in ('copy', 'copy_repeat', 'associative_recall'):
+    #         loss = self.loss_obj(y_pred.clamp(0, 1), y_true)
+    #         loss = loss if mask is None else loss * mask
+    #         # loss = torch.mean(loss) if mask is None else torch.sum(loss) / torch.sum(mask)
+    #         loss = (torch.mean(loss, dim=(1, 2)) if mask is None
+    #                 else torch.sum(loss, dim=(1, 2)) / torch.sum(mask, dim=(1, 2)))
+    #         if train:
+    #             with torch.no_grad():
+    #                 mu, std = loss.mean(), loss.std()
+    #                 outliers = torch.logical_or(loss < mu - std, loss > mu + std).type(FloatTensor).to(loss.device)
+    #
+    #             loss = (1. - outliers) * loss + outliers * mu
+    #         loss = torch.mean(loss)
+    #         return loss
+    #     elif cfg.task == 'stocks':
+    #         mu, std = y_pred[:, 0].unsqueeze(dim=1), y_pred[:, 1].unsqueeze(dim=1)
+    #         prob = 1 / torch.sqrt(2 * pi * torch.square(torch.ones_like(std)) + 1e-6) \
+    #                * torch.exp(-torch.square(y_true - mu) / (2 * torch.square(torch.ones_like(std)) + 1e-6))
+    #         loss = -prob * mask
+    #         loss = (torch.mean(loss, dim=(1, 2)) if mask is None
+    #                 else torch.sum(loss, dim=(1, 2)) / torch.sum(mask, dim=(1, 2)))
+    #         loss = torch.mean(loss)
+    #
+    #         return loss
 
-                loss = (1. - outliers) * loss + outliers * mu
-            loss = torch.mean(loss)
-            return loss
-        elif cfg.task == 'stocks':
-            mu, std = y_pred[:, 0].unsqueeze(dim=1), y_pred[:, 1].unsqueeze(dim=1)
-            prob = 1 / torch.sqrt(2 * pi * torch.square(torch.ones_like(std)) + 1e-6) \
-                   * torch.exp(-torch.square(y_true - mu) / (2 * torch.square(torch.ones_like(std)) + 1e-6))
-            loss = -prob * mask
-            loss = (torch.mean(loss, dim=(1, 2)) if mask is None
-                    else torch.sum(loss, dim=(1, 2)) / torch.sum(mask, dim=(1, 2)))
-            loss = torch.mean(loss)
-
-            return loss
-
-    def bit_loss(self, y_true: Tensor, y_pred: Tensor, mask: Tensor = None):
-        y_bit_true, y_bit_pred = (y_true > 0.5) + 0., (y_pred > 0.5) + 0.
-        loss = nn.L1Loss(reduction='none')(y_bit_true, y_bit_pred)
-        loss = loss if mask is None else loss * mask
-        loss = torch.sum(loss, dim=(1, 2))
-        loss = torch.mean(loss, dim=0)
-        return loss
+    # def bit_loss(self, y_true: Tensor, y_pred: Tensor, mask: Tensor = None):
+    #     y_bit_true, y_bit_pred = (y_true > 0.5) + 0., (y_pred > 0.5) + 0.
+    #     loss = nn.L1Loss(reduction='none')(y_bit_true, y_bit_pred)
+    #     loss = loss if mask is None else loss * mask
+    #     loss = torch.sum(loss, dim=(1, 2))
+    #     loss = torch.mean(loss, dim=0)
+    #     return loss

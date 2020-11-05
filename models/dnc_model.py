@@ -3,7 +3,7 @@ from typing import List, Dict, Union, Any
 import torch
 from torch import nn, sigmoid, Tensor, softmax, ByteTensor, IntTensor, LongTensor, prod, index_select, arange
 from torch.nn import ParameterList, Parameter
-from torch.nn.functional import softplus
+from torch.nn.functional import softplus, relu, elu
 
 import utils.tools as tools
 from utils.tools import nan
@@ -258,21 +258,46 @@ class DNCCell(nn.Module):
         return torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
+class MDNModule(nn.Module):
+    def __init__(self):
+        super(MDNModule, self).__init__()
+
+        self.line_h = nn.Linear(cfg.num_units, cfg.num_units)
+        self.line_alpha = nn.Linear(cfg.num_units, cfg.mdn_mixing_units)
+        self.line_mu = nn.Linear(cfg.num_units, cfg.mdn_mixing_units)
+        self.line_std = nn.Linear(cfg.num_units, cfg.mdn_mixing_units)
+
+    def forward(self, X):
+        h = relu(self.line_h(X))
+        alpha = softmax(self.line_alpha(h), dim=1)
+        mu = self.line_mu(h)
+        std = elu(self.line_std(h)) + 1
+
+        return torch.stack((alpha, mu, std), dim=2)
+
+
 class DNCModel(nn.Module):
     def __init__(self):
         super(DNCModel, self).__init__()
 
         self.dnc_cell = DNCCell()
-        self.line_post = nn.Linear(cfg.memory_size, cfg.output_size)
 
+        if cfg.task in ('copy', 'copy_repeat', 'associative_recall'):
+            self.line_post = nn.Linear(cfg.memory_size, cfg.output_size)
+        if cfg.task is 'stocks':
+            self.line_post = nn.Linear(cfg.memory_size, cfg.num_units)
+            self.mdn = MDNModule()
 
     def forward(self, X, mask=None, return_sequence=False):
         y, h = [None] * X.size(2), [None] * (X.size(2) + 1)
         for ii in range(X.size(2)):
-            if mask is None or torch.sum(mask[:, :, ii:]) > 0:
+            if cfg.task is "stocks" or mask is None or torch.sum(mask[:, :, ii:]) > 0:
                 y[ii], h[ii + 1] = self.dnc_cell(X[:, :, ii], h[ii])
                 y[ii] = self.line_post(y[ii])
-                y[ii] = cfg.output_func(y[ii])
+                if cfg.task in ('copy', 'copy_repeat', 'associative_recall'):
+                    y[ii] = cfg.output_func(y[ii])
+                elif cfg.task in ('stocks',):
+                    y[ii] = self.mdn(y[ii])
             else:
                 y[ii], h[ii + 1] = torch.zeros_like(y[ii - 1]), h[ii]
         y = torch.stack(y, dim=2)

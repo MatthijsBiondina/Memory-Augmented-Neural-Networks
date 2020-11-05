@@ -36,8 +36,8 @@ class StockDataset(Dataset):
         x = torch.cat((x_sos, x_seq, x_eos, x_out), dim=1)
 
         y = [0] * (cfg.max_seq_len * cfg.history_multiplier + 2)
-        for t in range(cfg.max_seq_len * cfg.history_multiplier,
-                       cfg.max_seq_len * cfg.history_multiplier + seq_len):
+        for t in range(t0 + cfg.max_seq_len * cfg.history_multiplier,
+                       t0 + cfg.max_seq_len * cfg.history_multiplier + seq_len):
             y.append(y[-1] + self.data[ii][0, t])
         y += [0] * (cfg.max_seq_len - seq_len)
         y = torch.FloatTensor(y).unsqueeze(0)

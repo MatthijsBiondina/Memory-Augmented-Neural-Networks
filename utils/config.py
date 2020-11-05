@@ -43,6 +43,7 @@ output_func = None
 max_repeats = None
 max_items = None
 history_multiplier = None
+mdn_mixing_units = None
 if task is "copy":  # task specific parameters
     num_bits_per_vector: int = 8
     input_size = num_bits_per_vector + 2
@@ -66,8 +67,9 @@ elif task is "stocks":
     num_bits_per_vector = 5
     input_size = num_bits_per_vector + 2
     output_size = 2
-    max_seq_len: int = 20
-    history_multiplier: int = 2
+    max_seq_len: int = 5
+    history_multiplier: int = 12
+    mdn_mixing_units = 5
 
 
     def output_func(y):

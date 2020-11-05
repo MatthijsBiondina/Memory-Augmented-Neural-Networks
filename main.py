@@ -21,6 +21,7 @@ from utils.utils import plots
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 # device = torch.device("cpu")
 
+eval = None
 if cfg.task == 'copy':
     data = CopyDataset()
 elif cfg.task == 'copy_repeat':
@@ -29,8 +30,10 @@ elif cfg.task == 'associative_recall':
     data = AssociativeRecallDataset()
 elif cfg.task == 'stocks':
     data = StockDataset()
+    eval = StockDataset(mode='eval')
 
-dataset = DataLoader(data, batch_size=cfg.batch_size, shuffle=True, num_workers=0)
+dataset_train = DataLoader(data, batch_size=cfg.batch_size, shuffle=True, num_workers=0)
+dataset_eval = DataLoader(eval, batch_size=cfg.batch_size, shuffle=True, num_workers=0)
 
 if cfg.mann == 'lstm':
     model = LSTMModel().to(device)
@@ -43,7 +46,7 @@ elif cfg.mann == 'transformer':
 
 # print(cfg.batch_size)
 
-train_loop = TrainLoop(dataset, model)
+train_loop = TrainLoop(dataset_train, model, eval_data=dataset_eval)
 train_loop.summary()
 
 # train_loop.load(path = f"./res/{cfg.task}_model.pth")

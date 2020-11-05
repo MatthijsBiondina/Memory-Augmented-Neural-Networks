@@ -47,13 +47,13 @@ class BokehBoard:
         except:
             pass
 
-    def update_plots(self, epoch, loss_data, vis_data, bit_data=None, steps=None):
-        if steps is None:
-            fig_loss = self.loss_plot((epoch + 1) * cfg.batch_size, *loss_data)
-        else:
-            fig_loss = self.loss_plot(steps, *loss_data)
-        fig_io, ii = self.io_plot(*vis_data[:2])
-        fig_st = self.stock_plot(*vis_data[:2], ii)
+    def update_plots(self, epoch, loss_data, vis_data, bit_data=None, steps=None, target=None, mask=None):
+        # if steps is None:
+        #     fig_loss = self.loss_plot((epoch + 1) * cfg.batch_size, *loss_data)
+        # else:
+        fig_loss = self.loss_plot(steps, *loss_data)
+        fig_io, ii = self.io_plot(*vis_data[:2], mask)
+        fig_st = self.stock_plot(*vis_data[:2], ii, target, mask)
         fig_mem = self.mem_plot(vis_data[2], ii)
         # fig_db = self.db_plot(vis_data[2],ii)
         # fig_bit = self.bit_plot((epoch + 1) * cfg.batch_size, bit_data)
@@ -71,7 +71,8 @@ class BokehBoard:
         self.metrics['train_loss'].append(train_loss)
         self.metrics['test_loss'].append(test_loss)
 
-        fig = figure(width=950, height=500, title="Train Loss", x_axis_label='episodes', y_axis_label='loss')
+        fig = figure(width=950, height=500, title="Train Loss", x_axis_label='episodes', y_axis_label='loss',
+                     y_axis_type="log")
         fig.line(not_none(self.metrics['episode'], self.metrics['train_loss']),
                  not_none(self.metrics['train_loss']), legend_label="Train loss",
                  line_color="royalblue", line_width=3, line_alpha=0.75)
@@ -80,25 +81,38 @@ class BokehBoard:
                  line_color="orchid", line_width=3, line_alpha=0.75)
         return fig
 
-    def stock_plot(self, X, Y, ii):
+    def stock_plot(self, X, Y, ii, target, mask):
         fig = figure(width=950, height=500, title="Prediction", x_axis_label='time', y_axis_label='quote')
         x = X[ii][0][1:cfg.max_seq_len * cfg.history_multiplier + 1].cpu().numpy()
         for jj in range(1, x.shape[0]):
             x[jj] += x[jj - 1]
-
-        mu = Y[ii][0][cfg.max_seq_len * cfg.history_multiplier + 2:].cpu().numpy()
-        std = Y[ii][1][cfg.max_seq_len * cfg.history_multiplier + 2:].cpu().numpy()
-        while np.sum(mu[-1]) == 0:
-            mu = mu[:-1]
-            std = std[:-1]
-        mu += x[-1]
-
         fig.line(np.arange(0, x.shape[0]),
                  x, line_color="royalblue", line_width=3, line_alpha=0.75)
-        fig.line(np.arange(x.shape[0], x.shape[0] + mu.shape[0]),
-                 mu, line_color="orchid", line_width=3, line_alpha=0.75)
-        fig.varea(np.arange(x.shape[0], x.shape[0] + mu.shape[0]),
-                  mu - std, mu + std, color="orchid", alpha=0.25)
+        idxs = torch.nonzero(mask[ii].squeeze()).cpu().numpy().squeeze()
+        target = target[ii, 0, idxs].cpu().numpy() + x[-1]
+        fig.line(idxs - 2, target, line_color="royalblue", line_width=3, line_alpha=0.75)
+
+        y = Y[ii, :, idxs, :].cpu().numpy()
+        alpha = np.mean(y[:, :, 0], axis=-1)
+        mu = y[:, :, 1] + x[-1]
+        std = y[:, :, 2]
+
+        for jj in range(cfg.mdn_mixing_units):
+            # fig.v
+            fig.line(idxs - 2, mu[jj], line_color="orchid", line_width=3, line_alpha=alpha[jj])
+            fig.varea(idxs - 2, mu[jj] - std[jj], mu[jj] + std[jj], color="orchid", alpha=0.5 * alpha[jj])
+
+        # mu = Y[ii][0][cfg.max_seq_len * cfg.history_multiplier + 2:].cpu().numpy()
+        # std = Y[ii][1][cfg.max_seq_len * cfg.history_multiplier + 2:].cpu().numpy()
+        # while np.sum(mu[-1]) == 0:
+        #     mu = mu[:-1]
+        #     std = std[:-1]
+        # mu += x[-1]
+        #
+        # fig.line(np.arange(x.shape[0], x.shape[0] + mu.shape[0]),
+        #          mu, line_color="orchid", line_width=3, line_alpha=0.75)
+        # fig.varea(np.arange(x.shape[0], x.shape[0] + mu.shape[0]),
+        #           mu - std, mu + std, color="orchid", alpha=0.25)
         return fig
 
     def bit_plot(self, episode, bit_loss):
@@ -110,13 +124,19 @@ class BokehBoard:
                  line_color="royalblue", line_width=3, line_alpha=0.75)
         return fig
 
-    def io_plot(self, X, Y):
+    def io_plot(self, X, Y, mask=None):
         # get index of longest sequence for plotting
-        ii = torch.argmax(torch.argmax(X[:, -1, :], dim=1)).detach().cpu().item()
+        if mask is None:
+            ii = torch.argmax(torch.argmax(X[:, -1, :], dim=1)).detach().cpu().item()
+        else:
+            ii = torch.argmax(torch.sum(mask, dim=-1).squeeze()).detach().cpu().item()
 
-        X = X.detach().clamp(-1,1).cpu().numpy()[ii]
-        Y = Y.detach().clamp(-1,1).cpu().numpy()[ii]
-
+        X = X.detach().clamp(-1, 1).cpu().numpy()[ii]
+        Y = Y.detach().clamp(-1, 1).cpu().numpy()[ii]
+        if len(Y.shape) != len(X.shape):
+            Y = Y.transpose((*[jj for jj in range(len(Y.shape)) if jj != 1], 1))
+            Y = Y.reshape((-1, X.shape[1]))
+        Y = Y * mask[ii].cpu().numpy()
         data = np.concatenate((X, Y), axis=0)[::-1].T
         data = [(i, j, data[i, j]) for i in range(data.shape[0]) for j in range(data.shape[1])]
         hmap = hv.HeatMap(data)
