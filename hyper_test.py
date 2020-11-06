@@ -19,12 +19,5 @@ import seaborn as sns
 
 H = Hyper()
 H.plot_scores('learning_rate')
-# H.plot_scores('batch_size')
 H.heatmaps()
-
 H.merge()
-
-#
-# # plt.savefig('./res/results.pdf')
-#
-# plt.show()

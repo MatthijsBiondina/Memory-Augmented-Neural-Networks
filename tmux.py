@@ -9,11 +9,11 @@ def start_session(ii, cuda=''):
     subprocess.run([cmd], shell=True, check=True)
     time.sleep(1)
 
-for ii in range(3):
+for ii in range(1):
     start_session(ii, 2)
-for ii in range(3, 8):
+for ii in range(1,2):
     start_session(ii, 1)
-for ii in range(8,13):
+for ii in range(2,3):
     start_session(ii, 0)
 
 time.sleep(10)
