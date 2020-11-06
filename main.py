@@ -29,8 +29,8 @@ elif cfg.task == 'copy_repeat':
 elif cfg.task == 'associative_recall':
     data = AssociativeRecallDataset()
 elif cfg.task == 'stocks':
-    data = StockDataset()
     eval = StockDataset(mode='eval')
+    data = StockDataset()
 
 dataset_train = DataLoader(data, batch_size=cfg.batch_size, shuffle=True, num_workers=0)
 dataset_eval = DataLoader(eval, batch_size=cfg.batch_size, shuffle=True, num_workers=0)
